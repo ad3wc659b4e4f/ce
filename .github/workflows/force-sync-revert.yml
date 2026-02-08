@@ -20,13 +20,13 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config --global user.name 'Antigravity Bot'
+          git config --global user.name 'who'
           git config --global user.email 'bot@noreply.github.com'
 
       - name: Sync and Apply Revert
         run: |
           # 1. 设置上游
-          git remote add upstream https://github.com/<原作者>/<项目名>.git
+          git remote add upstream https://github.com/PCL-Community/PCL2-CE.git
           git fetch upstream main
 
           # 获取上游最新的 Commit Hash
