@@ -1,0 +1,59 @@
+name: Force Sync & Floating Revert
+
+permissions:
+  contents: write # 必须有，用于 force push
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # 每天凌晨4点运行
+  workflow_dispatch:    # 支持手动运行
+
+jobs:
+  floating_revert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'Antigravity Bot'
+          git config --global user.email 'bot@noreply.github.com'
+
+      - name: Sync and Apply Revert
+        run: |
+          # 1. 设置上游
+          git remote add upstream https://github.com/<原作者>/<项目名>.git
+          git fetch upstream main
+
+          # 获取上游最新的 Commit Hash
+          UPSTREAM_HEAD=$(git rev-parse upstream/main)
+          echo "Upstream HEAD is $UPSTREAM_HEAD"
+
+          # 2. 检查：如果上游没更新，就没必要折腾了（省资源！）
+          # 我们检查本地历史中倒数第二个 commit (HEAD~1) 是否等于上游最新
+          # 因为我们的结构永远是: [上游最新] -> [Revert Commit]
+          CURRENT_BASE=$(git rev-parse HEAD~1 2>/dev/null || echo "none")
+          
+          if [ "$UPSTREAM_HEAD" == "$CURRENT_BASE" ]; then
+            echo "✅ Upstream hasn't moved since last sync. Skipping."
+            exit 0
+          fi
+
+          # 3. 【暴力核心】把本地直接重置成上游最新状态
+          git reset --hard upstream/main
+
+          # 4. 【再次手术】重新执行 Revert
+          # 注意：这里的 <BAD_HASH> 是那个讨厌的 commit 在原始历史中的 hash，它永远不变
+          # 如果 Revert 有冲突（比如上游动了同一行代码），这里会报错并让 Action 失败，你需要人工介入
+          git revert --no-edit <BAD_HASH>
+
+          # 5. 【破坏性推送】因为历史被重写了，必须 force push
+          git push -f origin main
+          
+          # 6. 处理 Tag (如果你想把上游的 Tag 也同步过来触发 Release)
+          git fetch upstream --tags
+          git push -f origin --tags
