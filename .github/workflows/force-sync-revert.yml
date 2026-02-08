@@ -1,4 +1,4 @@
-name: Force Sync & Floating Revert
+name: Force Sync & Apply Patch
 
 permissions:
   contents: write
@@ -9,36 +9,42 @@ on:
   workflow_dispatch:
 
 jobs:
-  floating_revert:
+  floating_patch:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: dev
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
         run: |
-          git config --global user.name 'who'
+          git config --global user.name 'Antigravity Bot'
           git config --global user.email 'bot@noreply.github.com'
 
-      - name: Sync and Apply Revert
+      - name: Sync and Apply Secret Patch
         run: |
           git remote add upstream https://github.com/PCL-Community/PCL2-CE.git
           git fetch upstream dev
           UPSTREAM_HEAD=$(git rev-parse upstream/dev)
-          echo "Upstream HEAD is $UPSTREAM_HEAD"
-          
           CURRENT_BASE=$(git rev-parse HEAD~1 2>/dev/null || echo "none")
           if [ "$UPSTREAM_HEAD" == "$CURRENT_BASE" ]; then
-            echo "✅ Upstream hasn't moved since last sync. Skipping."
-            exit 0
+             echo "✅ Upstream hasn't moved. Skipping."
+             exit 0
           fi
-
           git reset --hard upstream/dev
-          git revert --no-edit efcd2b9333b6b04b577a4f2508c6f36ea48737cb
-
-          git push -f origin main
+          if [ -n "${{ secrets.ANTI_FEATURE_PATCH }}" ]; then
+            echo "Applying Anti-Feature Patch from Secrets..."
+            echo "${{ secrets.ANTI_FEATURE_PATCH }}" > /tmp/fix.patch
+            git apply --3way --whitespace=fix /tmp/fix.patch
+            git add .
+            git commit -m "chore: remove unwanted features (Auto-Patch)"
+          else
+            echo "❌ Error: Patch secret is empty!"
+            exit 1
+          fi
+          git push -f origin dev
           git fetch upstream --tags
           git push -f origin --tags
